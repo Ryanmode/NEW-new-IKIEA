@@ -34,6 +34,9 @@ def create_ikea_simulation():
                    tiles='cartodbpositron',
                    control_scale=True)
 
+    # CAPTURE MAP ID FOR RELIABLE JAVASCRIPT REFERENCE
+    map_id = m.get_name()
+
     # Define all strategic nodes
     nodes = {
         'N1_SWE': {
@@ -313,10 +316,17 @@ def create_ikea_simulation():
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="https://unpkg.com/leaflet-moving-marker@0.0.1/dist/leaflet.moving-marker.min.js"></script>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>IKEA Supply Chain Simulation</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
         <style>
             body {{
                 margin: 0;
@@ -865,33 +875,44 @@ def create_ikea_simulation():
                 }}
             }}
 
-            // Simulation loop
+            // Simulation loop with error handling
             function simulationStep() {{
-                if (!isPlaying) return;
+                try {{
+                    if (!isPlaying) return;
 
-                // Advance time
-                const deltaTime = (1/60) * simulationSpeed; // 60 FPS
-                simulationTime += deltaTime;
-                currentDate = new Date(startDate.getTime() + simulationTime * 1000);
+                    // Check for valid map reference
+                    if (!theMap) {{
+                        console.error('CRITICAL: Map not available during simulation step');
+                        return;
+                    }}
 
-                // Update node states
-                updateNodeStates();
+                    // Advance time
+                    const deltaTime = (1/60) * simulationSpeed; // 60 FPS
+                    simulationTime += deltaTime;
+                    currentDate = new Date(startDate.getTime() + simulationTime * 1000);
 
-                // Process active shipments
-                processShipments();
+                    // Update node states
+                    updateNodeStates();
 
-                // Update display
-                updateDisplay();
+                    // Process active shipments
+                    processShipments();
 
-                // Update charts periodically
-                if (Math.floor(simulationTime) % 60 === 0) {{ // Every minute
-                    updateCharts();
+                    // Update display
+                    updateDisplay();
+
+                    // Update charts periodically
+                    if (Math.floor(simulationTime) % 60 === 0) {{ // Every minute
+                        updateCharts();
+                    }}
+
+                    // Update moving markers
+                    ikeaSimulation.updateMovingMarkers();
+
+                    animationId = requestAnimationFrame(simulationStep);
+                }} catch (error) {{
+                    console.error('CRITICAL: Error in simulation step:', error.message || error);
+                    stopSimulation();
                 }}
-
-                // Update moving markers
-                ikeaSimulation.updateMovingMarkers();
-
-                animationId = requestAnimationFrame(simulationStep);
             }}
 
             // Process shipments and CO2 emissions
@@ -1018,8 +1039,16 @@ def create_ikea_simulation():
     m.get_root().html.add_child(folium.Element(moving_marker_js))
 
     # Create a custom JavaScript plugin for the simulation logic
-    simulation_js = f"""
+    simulation_js = """
     // IKEA Supply Chain Simulation JavaScript
+
+    // RELIABLE MAP REFERENCE
+    const mapId = 'MAP_ID_PLACEHOLDER';
+    const theMap = window[mapId];
+    if (!theMap) {{
+        console.error("CRITICAL: Map not found! Map ID:", mapId);
+    }}
+
     var ikeaSimulation = {{
         isPlaying: false,
         simulationSpeed: 1,
@@ -1196,26 +1225,17 @@ def create_ikea_simulation():
                 }}
             }};
 
-            this.initializeMovingMarkers = function() {{
-                console.log('Initializing moving markers...');
+            this.        initializeMovingMarkers = function() {{
+            console.log('Initializing moving markers...');
 
-                // Find the map object - Folium creates maps with unique IDs
-                let mapObject = null;
-                for (let key in window) {{
-                    if (key.startsWith('map_') && window[key] instanceof L.Map) {{
-                        mapObject = window[key];
-                        console.log('Found map object:', key);
-                        break;
-                    }}
-                }}
+            // Use the reliable map reference
+            if (!theMap) {{
+                console.error('CRITICAL: Map not available for moving markers initialization');
+                return;
+            }}
 
-                if (!mapObject) {{
-                    console.error('Could not find map object');
-                    return;
-                }}
-
-                // Store map reference
-                this.map = mapObject;
+            // Store map reference
+            this.map = theMap;
 
                 Object.keys(this.routesData).forEach(routeId => {{
                     const route = this.routesData[routeId];
@@ -1230,17 +1250,27 @@ def create_ikea_simulation():
             }};
 
             this.updateMovingMarkers = function() {{
-                Object.keys(this.routesData).forEach(routeId => {{
-                    const route = this.routesData[routeId];
-                    const vehicle = this.movingMarkers[routeId];
-
-                    if (vehicle && !vehicle.isMoving) {{
-                        const startChance = (1 / route.frequency) * (this.simulationTime / 3600);
-                        if (Math.random() < startChance * 0.5) {{
-                            this.startVehicleMovement(routeId);
-                        }}
+                try {{
+                    // Check for valid map reference before updating markers
+                    if (!theMap) {{
+                        console.error('CRITICAL: Map not available for moving markers update');
+                        return;
                     }}
-                }});
+
+                    Object.keys(this.routesData).forEach(routeId => {{
+                        const route = this.routesData[routeId];
+                        const vehicle = this.movingMarkers[routeId];
+
+                        if (vehicle && !vehicle.isMoving) {{
+                            const startChance = (1 / route.frequency) * (this.simulationTime / 3600);
+                            if (Math.random() < startChance * 0.5) {{
+                                this.startVehicleMovement(routeId);
+                            }}
+                        }}
+                    }});
+                }} catch (error) {{
+                    console.error('CRITICAL: Error updating moving markers:', error.message || error);
+                }}
             }};
 
             console.log('Moving marker code loaded');
@@ -1510,21 +1540,32 @@ def create_ikea_simulation():
         }},
 
         simulationStep: function() {{
-            if (!this.isPlaying) return;
+            try {{
+                if (!this.isPlaying) return;
 
-            const deltaTime = (1/60) * this.simulationSpeed;
-            this.simulationTime += deltaTime;
-            this.currentDate = new Date(this.startDate.getTime() + this.simulationTime * 1000);
+                // Check for valid map reference
+                if (!theMap) {{
+                    console.error('CRITICAL: Map not available during simulation step');
+                    return;
+                }}
 
-            this.updateNodeStates();
-            this.processShipments();
-            this.updateDisplay();
+                const deltaTime = (1/60) * this.simulationSpeed;
+                this.simulationTime += deltaTime;
+                this.currentDate = new Date(this.startDate.getTime() + this.simulationTime * 1000);
 
-            if (Math.floor(this.simulationTime) % 60 === 0) {{
-                this.updateCharts();
+                this.updateNodeStates();
+                this.processShipments();
+                this.updateDisplay();
+
+                if (Math.floor(this.simulationTime) % 60 === 0) {{
+                    this.updateCharts();
+                }}
+
+                requestAnimationFrame(() => this.simulationStep());
+            }} catch (error) {{
+                console.error('CRITICAL: Error in simulation step:', error.message || error);
+                this.isPlaying = false;
             }}
-
-            requestAnimationFrame(() => this.simulationStep());
         }},
 
         startSimulation: function() {{
@@ -1591,6 +1632,9 @@ def create_ikea_simulation():
         }}, 1000);
     }});
     """
+
+    # Format the simulation_js with the captured map_id
+    simulation_js = simulation_js.replace('MAP_ID_PLACEHOLDER', map_id)
 
     # Add moving marker functions to the main simulation script
     moving_marker_code = """
@@ -1722,28 +1766,47 @@ def create_ikea_simulation():
         };
 
         this.updateMovingMarkers = function() {
-            Object.keys(this.routesData).forEach(routeId => {
-                const route = this.routesData[routeId];
-                const vehicle = this.movingMarkers[routeId];
-
-                if (vehicle && !vehicle.isMoving) {
-                    const startChance = (1 / route.frequency) * (this.simulationTime / 3600);
-                    if (Math.random() < startChance * 0.5) {
-                        this.startVehicleMovement(routeId);
-                    }
+            try {
+                // Check for valid map reference before updating markers
+                if (!theMap) {
+                    console.error('CRITICAL: Map not available for moving markers update');
+                    return;
                 }
-            });
+
+                Object.keys(this.routesData).forEach(routeId => {
+                    const route = this.routesData[routeId];
+                    const vehicle = this.movingMarkers[routeId];
+
+                    if (vehicle && !vehicle.isMoving) {
+                        const startChance = (1 / route.frequency) * (this.simulationTime / 3600);
+                        if (Math.random() < startChance * 0.5) {
+                            this.startVehicleMovement(routeId);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('CRITICAL: Error updating moving markers:', error.message || error);
+            }
         };
     """
 
     # Insert the moving marker code into the init function
+    init_content = f"""
+            {moving_marker_code}
+            """
+
     simulation_js = simulation_js.replace(
         "        init: function() {{\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},",
-        f"        init: function() {{\n            {moving_marker_code}\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},"
+        f"        init: function() {{\n            {init_content}\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},"
     )
 
-    # Add the JavaScript to the map
-    m.get_root().script.add_child(folium.Element(simulation_js))
+    # Write JavaScript to a separate file and include it
+    with open('ikea_simulation.js', 'w') as f:
+        f.write(simulation_js)
+
+    # Add the JavaScript file to the map
+    js_include = '<script src="ikea_simulation.js"></script>'
+    m.get_root().html.add_child(folium.Element(js_include))
 
     # Add custom CSS
     custom_css = """
