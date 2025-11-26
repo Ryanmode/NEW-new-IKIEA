@@ -1290,14 +1290,40 @@ def create_ikea_simulation():
         }},
 
         setupEventListeners: function() {{
-            document.getElementById('playPauseBtn').addEventListener('click', () => this.toggleSimulation());
-            document.getElementById('resetBtn').addEventListener('click', () => this.resetSimulation());
-            document.getElementById('speedSlider').addEventListener('input', (e) => {{
-                this.simulationSpeed = parseFloat(e.target.value);
-                document.getElementById('speedValue').textContent = this.simulationSpeed.toFixed(1) + 'x';
-            }});
-            document.getElementById('scenarioSelector').addEventListener('change', (e) => {{
-                this.currentScenario = e.target.value;
+            console.log('Setting up event listeners...');
+            const playBtn = document.getElementById('playPauseBtn');
+            if (playBtn) {{
+                console.log('Play button found, adding listener');
+                playBtn.addEventListener('click', () => {{
+                    console.log('Play button clicked');
+                    this.toggleSimulation();
+                }});
+            }} else {{
+                console.error('Play button NOT found');
+            }}
+
+            const resetBtn = document.getElementById('resetBtn');
+            if (resetBtn) {{
+                resetBtn.addEventListener('click', () => this.resetSimulation());
+            }}
+
+            const speedSlider = document.getElementById('speedSlider');
+            if (speedSlider) {{
+                speedSlider.addEventListener('input', (e) => {{
+                    this.simulationSpeed = parseFloat(e.target.value);
+                    document.getElementById('speedValue').textContent = this.simulationSpeed.toFixed(1) + 'x';
+                }});
+            }}
+
+            const scenarioSelector = document.getElementById('scenarioSelector');
+            if (scenarioSelector) {{
+                scenarioSelector.addEventListener('change', (e) => {{
+                    this.currentScenario = e.target.value;
+                }});
+            }}
+            
+            document.querySelectorAll('.panel-header').forEach(header => {{
+                header.addEventListener('click', () => this.togglePanel(header.parentElement.id));
             }});
         }},
 
@@ -1632,17 +1658,6 @@ def create_ikea_simulation():
             document.querySelector('#inspectorPanel .panel-toggle').textContent = '−';
         }}
     }};
-
-    // Initialize when DOM is ready
-    document.addEventListener('DOMContentLoaded', function() {{
-        console.log('DOM ready, initializing simulation...');
-        ikeaSimulation.init();
-        // Initialize moving markers after a short delay to ensure map is ready
-        setTimeout(() => {{
-            console.log('Initializing moving markers...');
-            ikeaSimulation.initializeMovingMarkers();
-        }}, 1000);
-    }});
     """
 
     # Format the simulation_js with the captured map_id
@@ -1808,7 +1823,7 @@ def create_ikea_simulation():
             """
 
     simulation_js = simulation_js.replace(
-        "        init: function() {{\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},",
+        "        init: function() {\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        },",
         f"        init: function() {{\n            {init_content}\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},"
     )
 
@@ -1840,10 +1855,6 @@ def create_ikea_simulation():
     # Write JavaScript to a separate file and include it
     with open('ikea_simulation.js', 'w') as f:
         f.write(simulation_js)
-
-    # Add the JavaScript file to the map
-    js_include = '<script src="ikea_simulation.js"></script>'
-    m.get_root().html.add_child(folium.Element(js_include))
 
     # Add custom CSS
     custom_css = """
@@ -1973,11 +1984,20 @@ def create_ikea_simulation():
         justify-content: space-between;
         margin-bottom: 5px;
     }
+    .vehicle-icon {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    .vehicle-icon div {
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        line-height: 1;
+    }
     </style>
     """
 
-    # Add CSS to the map
-    m.get_root().html.add_child(folium.Element(custom_css))
+    # 1. Inject CSS (Header)
+    m.get_root().header.add_child(folium.Element(custom_css))
 
     # Add HTML elements for UI panels
     ui_html = """
@@ -2069,8 +2089,68 @@ def create_ikea_simulation():
     </div>
     """
 
-    # Add UI HTML to the map
+    # 2. Inject UI HTML (Body) - MUST BE BEFORE JS
     m.get_root().html.add_child(folium.Element(ui_html))
+
+    # Insert the moving marker code into the init function
+    init_content = f"""
+            {moving_marker_code}
+            """
+
+    simulation_js = simulation_js.replace(
+        "        init: function() {\\n            this.setupEventListeners();\\n            this.initCharts();\\n            this.updateDisplay();\\n            console.log('IKEA Simulation initialized');\\n        },",
+        f"        init: function() {{\\n            {init_content}\\n            this.setupEventListeners();\\n            this.initCharts();\\n            this.updateDisplay();\\n            console.log('IKEA Simulation initialized');\\n        }},"
+    )
+
+    # Fix double braces for JavaScript syntax
+    simulation_js = simulation_js.replace('{{', '{')
+    simulation_js = simulation_js.replace('}}', '}')
+
+    # Use minimal data for now to get basic structure working
+    simulation_js = simulation_js.replace(
+        "{json.dumps({node_id: {\\n            'stock': node_data['initial_stock'],\\n            'capacity': node_data['capacity'],\\n            'inbound_rate': 0,\\n            'outbound_rate': 0,\\n            'production_rate': 50 if node_data['type'] == 'manufacturing' else 0,\\n            'sales_rate': 20 if node_data['type'] == 'retail' else 0\\n        } for node_id, node_data in nodes.items()})}",
+        "{}"
+    )
+
+    simulation_js = simulation_js.replace(
+        "{json.dumps(routes)}",
+        "{}"
+    )
+
+    simulation_js = simulation_js.replace(
+        "{json.dumps(nodes)}",
+        "{}"
+    )
+
+    simulation_js = simulation_js.replace(
+        "{json.dumps(route_coordinates)}",
+        "{}"
+    )
+    
+    # Add safeguard to initialization
+    simulation_js += """
+    // Safeguard initialization
+    window.addEventListener('load', function() {
+        console.log('Window loaded, initializing...');
+        setTimeout(() => { 
+            if (typeof ikeaSimulation !== 'undefined') {
+                ikeaSimulation.init(); 
+            } else {
+                console.error('ikeaSimulation not defined!');
+            }
+        }, 1000);
+    });
+    """
+
+    # Write JavaScript to a separate file and include it
+    with open('ikea_simulation.js', 'w') as f:
+        f.write(simulation_js)
+
+    # 3. Inject JS Libraries and Simulation Script (Body) - LAST
+    # Note: Leaflet and other libs are already added by Folium or in the template
+    # We just need to add our custom script
+    js_include = '<script src="ikea_simulation.js"></script>'
+    m.get_root().html.add_child(folium.Element(js_include))
 
     # Save the map
     output_file = 'ikea_master_simulation.html'
@@ -2104,7 +2184,7 @@ def serve_simulation(output_file):
                 try:
                     httpd.serve_forever()
                 except KeyboardInterrupt:
-                    print("\nServer stopped.")
+                    print("\\nServer stopped.")
                     break
         except OSError:
             PORT += 1

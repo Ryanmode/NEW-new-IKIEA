@@ -2,7 +2,7 @@
     // IKEA Supply Chain Simulation JavaScript
 
     // RELIABLE MAP REFERENCE
-    const mapId = 'map_ff4111e2d3b9bc2c87b322b29f5807bd';
+    const mapId = 'map_cf81f32988bd51799cd74fa41620ae8d';
     let theMap = window[mapId];
     if (!theMap) {
         console.warn("Map not immediately available, will check later. Map ID:", mapId);
@@ -236,14 +236,40 @@
         },
 
         setupEventListeners: function() {
-            document.getElementById('playPauseBtn').addEventListener('click', () => this.toggleSimulation());
-            document.getElementById('resetBtn').addEventListener('click', () => this.resetSimulation());
-            document.getElementById('speedSlider').addEventListener('input', (e) => {
-                this.simulationSpeed = parseFloat(e.target.value);
-                document.getElementById('speedValue').textContent = this.simulationSpeed.toFixed(1) + 'x';
-            });
-            document.getElementById('scenarioSelector').addEventListener('change', (e) => {
-                this.currentScenario = e.target.value;
+            console.log('Setting up event listeners...');
+            const playBtn = document.getElementById('playPauseBtn');
+            if (playBtn) {
+                console.log('Play button found, adding listener');
+                playBtn.addEventListener('click', () => {
+                    console.log('Play button clicked');
+                    this.toggleSimulation();
+                });
+            } else {
+                console.error('Play button NOT found');
+            }
+
+            const resetBtn = document.getElementById('resetBtn');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => this.resetSimulation());
+            }
+
+            const speedSlider = document.getElementById('speedSlider');
+            if (speedSlider) {
+                speedSlider.addEventListener('input', (e) => {
+                    this.simulationSpeed = parseFloat(e.target.value);
+                    document.getElementById('speedValue').textContent = this.simulationSpeed.toFixed(1) + 'x';
+                });
+            }
+
+            const scenarioSelector = document.getElementById('scenarioSelector');
+            if (scenarioSelector) {
+                scenarioSelector.addEventListener('change', (e) => {
+                    this.currentScenario = e.target.value;
+                });
+            }
+            
+            document.querySelectorAll('.panel-header').forEach(header => {
+                header.addEventListener('click', () => this.togglePanel(header.parentElement.id));
             });
         },
 
@@ -578,15 +604,16 @@
             document.querySelector('#inspectorPanel .panel-toggle').textContent = '−';
         }
     };
-
-    // Initialize when DOM is ready
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM ready, initializing simulation...');
-        ikeaSimulation.init();
-        // Initialize moving markers after a short delay to ensure map is ready
-        setTimeout(() => {
-            console.log('Initializing moving markers...');
-            ikeaSimulation.initializeMovingMarkers();
+    
+    // Safeguard initialization
+    window.addEventListener('load', function() {
+        console.log('Window loaded, initializing...');
+        setTimeout(() => { 
+            if (typeof ikeaSimulation !== 'undefined') {
+                ikeaSimulation.init(); 
+            } else {
+                console.error('ikeaSimulation not defined!');
+            }
         }, 1000);
     });
     
