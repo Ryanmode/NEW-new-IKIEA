@@ -2,7 +2,7 @@
     // IKEA Supply Chain Simulation JavaScript
 
     // RELIABLE MAP REFERENCE
-    const mapId = 'map_5598155206cb198dec49be76f6dc3463';
+    const mapId = 'map_2fad19919ebbb95d93cc869f87050d53';
     let theMap = window[mapId];
     if (!theMap) {
         console.warn("Map not immediately available, will check later. Map ID:", mapId);

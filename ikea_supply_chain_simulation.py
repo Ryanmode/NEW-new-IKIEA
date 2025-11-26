@@ -10,6 +10,12 @@ import json
 import requests
 from datetime import datetime, timedelta
 import math
+import http.server
+import socketserver
+import webbrowser
+import threading
+import os
+import time
 
 def get_osrm_route(start_coords, end_coords, profile='driving'):
     """Get route from OSRM API"""
@@ -2067,9 +2073,42 @@ def create_ikea_simulation():
     m.get_root().html.add_child(folium.Element(ui_html))
 
     # Save the map
-    m.save('ikea_master_simulation.html')
-    print("IKEA Supply Chain Simulation saved as 'ikea_master_simulation.html'")
-    print("Open this file in your web browser to run the simulation.")
+    output_file = 'ikea_master_simulation.html'
+    m.save(output_file)
+    print(f"IKEA Supply Chain Simulation saved as '{output_file}'")
+    
+    # Serve the file
+    serve_simulation(output_file)
+
+def serve_simulation(output_file):
+    """Serve the simulation file via a local HTTP server"""
+    PORT = 8000
+    Handler = http.server.SimpleHTTPRequestHandler
+    
+    # Find a free port
+    while True:
+        try:
+            with socketserver.TCPServer(("", PORT), Handler) as httpd:
+                print(f"Serving at http://localhost:{PORT}")
+                
+                # Open browser in a separate thread to ensure server is ready
+                def open_browser():
+                    time.sleep(1.5) # Give server a moment to start
+                    url = f"http://localhost:{PORT}/{output_file}"
+                    print(f"Opening {url}...")
+                    webbrowser.open(url)
+                
+                threading.Thread(target=open_browser).start()
+                
+                print("Press Ctrl+C to stop the server")
+                try:
+                    httpd.serve_forever()
+                except KeyboardInterrupt:
+                    print("\nServer stopped.")
+                    break
+        except OSError:
+            PORT += 1
+
 
 if __name__ == "__main__":
     create_ikea_simulation()
