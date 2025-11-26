@@ -1038,6 +1038,7 @@ def create_ikea_simulation():
         routesData: {json.dumps(routes)},
         nodesData: {json.dumps(nodes)},
         routeCoordinates: {json.dumps(route_coordinates)},
+        movingMarkers: {{}},
         co2Data: {{
             baseline: {{ truck: 0, rail: 0, air: 0 }},
             green_rail: {{ truck: 0, rail: 0, air: 0 }},
@@ -1051,6 +1052,198 @@ def create_ikea_simulation():
         charts: {{}},
 
         init: function() {{
+            console.log('IKEA Simulation init starting...');
+            // Moving markers functionality
+
+            this.createMovingMarker = function(routeId, vehicleType) {{
+                console.log('Creating moving marker for route:', routeId, 'type:', vehicleType);
+                const routeCoords = this.routeCoordinates[routeId];
+                console.log('Route coordinates:', routeCoords);
+
+                if (!routeCoords || routeCoords.length < 2) {{
+                    console.log('Invalid route coordinates for', routeId);
+                    return null;
+                }}
+
+                const route = this.routesData[routeId];
+                const speedKmh = route.speed;
+                const distance = this.calculateRouteDistance(routeCoords);
+                const duration = (distance / speedKmh) * 3600000 / this.simulationSpeed;
+
+                console.log('Route distance:', distance, 'km, duration:', duration, 'ms');
+
+                const iconHtml = this.getVehicleIcon(vehicleType);
+                console.log('Vehicle icon HTML:', iconHtml);
+
+            try {{
+                // Create a simple moving marker using standard Leaflet
+                const marker = L.marker(routeCoords[0], {{
+                    icon: L.divIcon({{
+                        html: iconHtml,
+                        className: 'vehicle-icon',
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    }})
+                }}).addTo(this.map);
+
+                console.log('Moving marker created successfully for', routeId);
+
+                this.movingMarkers[routeId] = {{
+                    marker: marker,
+                    routeId: routeId,
+                    vehicleType: vehicleType,
+                    routeCoords: routeCoords,
+                    duration: duration,
+                    distance: distance,
+                    isMoving: false,
+                    lastStartTime: 0,
+                    currentPosition: 0, // index in routeCoords
+                    animationId: null
+                }};
+
+                return marker;
+                }} catch (error) {{
+                    console.error('Error creating moving marker:', error.message || error);
+                    return null;
+                }}
+            }};
+
+            this.getVehicleIcon = function(vehicleType) {{
+                const icons = {{
+                    truck: '<div style="color: blue; font-size: 20px;">🚛</div>',
+                    rail: '<div style="color: green; font-size: 20px;">🚂</div>',
+                    air: '<div style="color: red; font-size: 20px;">✈️</div>',
+                    multimodal: '<div style="color: purple; font-size: 20px;">🚛</div>'
+                }};
+                return icons[vehicleType] || icons.truck;
+            }};
+
+            this.calculateRouteDistance = function(coords) {{
+                let totalDistance = 0;
+                for (let i = 1; i < coords.length; i++) {{
+                    totalDistance += this.calculateDistance(
+                        coords[i-1][0], coords[i-1][1],
+                        coords[i][0], coords[i][1]
+                    );
+                }}
+                return totalDistance;
+            }};
+
+            this.startVehicleMovement = function(routeId) {{
+                console.log('Starting vehicle movement for', routeId);
+                const vehicle = this.movingMarkers[routeId];
+                if (vehicle && !vehicle.isMoving && vehicle.routeCoords.length > 1) {{
+                    vehicle.isMoving = true;
+                    vehicle.lastStartTime = Date.now();
+                    vehicle.currentPosition = 0;
+
+                    // Calculate step duration based on total duration and number of steps
+                    const stepDuration = vehicle.duration / (vehicle.routeCoords.length - 1);
+
+                    const animate = () => {{
+                        if (!vehicle.isMoving) return;
+
+                        vehicle.currentPosition++;
+
+                        if (vehicle.currentPosition >= vehicle.routeCoords.length) {{
+                            // Vehicle has reached the end
+                            this.onVehicleArrival(routeId);
+                            return;
+                        }}
+
+                        // Move marker to next position
+                        const nextCoord = vehicle.routeCoords[vehicle.currentPosition];
+                        vehicle.marker.setLatLng(nextCoord);
+
+                        // Schedule next movement
+                        vehicle.animationId = setTimeout(animate, stepDuration);
+                    }};
+
+                    // Start animation
+                    animate();
+                }}
+            }};
+
+            this.onVehicleArrival = function(routeId) {{
+                console.log('Vehicle arrived at destination for', routeId);
+                const vehicle = this.movingMarkers[routeId];
+                if (vehicle) {{
+                    vehicle.isMoving = false;
+                    setTimeout(() => {{
+                        if (this.movingMarkers[routeId]) {{
+                            this.resetVehiclePosition(routeId);
+                        }}
+                    }}, 3000);
+                }}
+            }};
+
+            this.resetVehiclePosition = function(routeId) {{
+                const vehicle = this.movingMarkers[routeId];
+                if (vehicle) {{
+                    // Clear any ongoing animation
+                    if (vehicle.animationId) {{
+                        clearTimeout(vehicle.animationId);
+                        vehicle.animationId = null;
+                    }}
+
+                    // Reset to starting position
+                    const routeCoords = this.routeCoordinates[routeId];
+                    if (routeCoords && routeCoords.length > 0) {{
+                        vehicle.marker.setLatLng(routeCoords[0]);
+                    }}
+                    vehicle.isMoving = false;
+                    vehicle.currentPosition = 0;
+                }}
+            }};
+
+            this.initializeMovingMarkers = function() {{
+                console.log('Initializing moving markers...');
+
+                // Find the map object - Folium creates maps with unique IDs
+                let mapObject = null;
+                for (let key in window) {{
+                    if (key.startsWith('map_') && window[key] instanceof L.Map) {{
+                        mapObject = window[key];
+                        console.log('Found map object:', key);
+                        break;
+                    }}
+                }}
+
+                if (!mapObject) {{
+                    console.error('Could not find map object');
+                    return;
+                }}
+
+                // Store map reference
+                this.map = mapObject;
+
+                Object.keys(this.routesData).forEach(routeId => {{
+                    const route = this.routesData[routeId];
+                    this.createMovingMarker(routeId, route.vehicle);
+                }});
+
+                // Force start a test vehicle immediately
+                setTimeout(() => {{
+                    console.log('Starting test vehicle...');
+                    this.startVehicleMovement('china_poland'); // Start China->Poland train
+                }}, 2000);
+            }};
+
+            this.updateMovingMarkers = function() {{
+                Object.keys(this.routesData).forEach(routeId => {{
+                    const route = this.routesData[routeId];
+                    const vehicle = this.movingMarkers[routeId];
+
+                    if (vehicle && !vehicle.isMoving) {{
+                        const startChance = (1 / route.frequency) * (this.simulationTime / 3600);
+                        if (Math.random() < startChance * 0.5) {{
+                            this.startVehicleMovement(routeId);
+                        }}
+                    }}
+                }});
+            }};
+
+            console.log('Moving marker code loaded');
             this.setupEventListeners();
             this.initCharts();
             this.updateDisplay();
@@ -1389,150 +1582,168 @@ def create_ikea_simulation():
 
     // Initialize when DOM is ready
     document.addEventListener('DOMContentLoaded', function() {{
+        console.log('DOM ready, initializing simulation...');
         ikeaSimulation.init();
+        // Initialize moving markers after a short delay to ensure map is ready
+        setTimeout(() => {{
+            console.log('Initializing moving markers...');
+            ikeaSimulation.initializeMovingMarkers();
+        }}, 1000);
     }});
     """
 
-    # Add the JavaScript to the map
-    m.get_root().script.add_child(folium.Element(simulation_js))
+    # Add moving marker functions to the main simulation script
+    moving_marker_code = """
+        // Moving markers functionality
+        this.movingMarkers = {};
 
-    # Add moving marker functions as separate script to avoid f-string issues
-    moving_marker_functions = """
-    <script>
-    // Moving marker functions for IKEA simulation
-    // Wait for ikeaSimulation to be defined
-    function initMovingMarkers() {
-        if (typeof ikeaSimulation !== 'undefined') {
-            ikeaSimulation.movingMarkers = {};
-
-            ikeaSimulation.createMovingMarker = function(routeId, vehicleType) {
-        const routeCoords = this.routeCoordinates[routeId];
-        if (!routeCoords || routeCoords.length < 2) return null;
-
-        const route = this.routesData[routeId];
-        const speedKmh = route.speed;
-        const distance = this.calculateRouteDistance(routeCoords);
-        const duration = (distance / speedKmh) * 3600000 / this.simulationSpeed;
-
-        const iconHtml = this.getVehicleIcon(vehicleType);
-
-        const marker = L.Marker.movingMarker(routeCoords, [duration], {
-            icon: L.divIcon({
-                html: iconHtml,
-                className: 'vehicle-icon',
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
-            }),
-            autostart: false
-        }).addTo(map);
-
-        this.movingMarkers[routeId] = {
-            marker: marker,
-            routeId: routeId,
-            vehicleType: vehicleType,
-            duration: duration,
-            distance: distance,
-            isMoving: false,
-            lastStartTime: 0
-        };
-
-        return marker;
-    };
-
-    ikeaSimulation.getVehicleIcon = function(vehicleType) {
-        const icons = {
-            truck: '<div style="color: blue; font-size: 20px;">🚛</div>',
-            rail: '<div style="color: green; font-size: 20px;">🚂</div>',
-            air: '<div style="color: red; font-size: 20px;">✈️</div>',
-            multimodal: '<div style="color: purple; font-size: 20px;">🚛</div>'
-        };
-        return icons[vehicleType] || icons.truck;
-    };
-
-    ikeaSimulation.calculateRouteDistance = function(coords) {
-        let totalDistance = 0;
-        for (let i = 1; i < coords.length; i++) {
-            totalDistance += this.calculateDistance(
-                coords[i-1][0], coords[i-1][1],
-                coords[i][0], coords[i][1]
-            );
-        }
-        return totalDistance;
-    };
-
-    ikeaSimulation.startVehicleMovement = function(routeId) {
-        const vehicle = this.movingMarkers[routeId];
-        if (vehicle && !vehicle.isMoving) {
-            vehicle.marker.start();
-            vehicle.isMoving = true;
-            vehicle.lastStartTime = Date.now();
-
-            setTimeout(() => {
-                this.onVehicleArrival(routeId);
-            }, vehicle.duration);
-        }
-    };
-
-    ikeaSimulation.onVehicleArrival = function(routeId) {
-        const vehicle = this.movingMarkers[routeId];
-        if (vehicle) {
-            vehicle.isMoving = false;
-            setTimeout(() => {
-                if (this.movingMarkers[routeId]) {
-                    this.resetVehiclePosition(routeId);
-                }
-            }, 3000);
-        }
-    };
-
-    ikeaSimulation.resetVehiclePosition = function(routeId) {
-        const vehicle = this.movingMarkers[routeId];
-        if (vehicle) {
-            vehicle.marker.stop();
+        this.createMovingMarker = function(routeId, vehicleType) {
+            console.log('Creating moving marker for route:', routeId, 'type:', vehicleType);
             const routeCoords = this.routeCoordinates[routeId];
-            if (routeCoords && routeCoords.length > 0) {
-                vehicle.marker.setLatLng(routeCoords[0]);
+            console.log('Route coordinates:', routeCoords);
+
+            if (!routeCoords || routeCoords.length < 2) {
+                console.log('Invalid route coordinates for', routeId);
+                return null;
             }
-            vehicle.isMoving = false;
-        }
-    };
 
-    ikeaSimulation.initializeMovingMarkers = function() {
-        Object.keys(this.routesData).forEach(routeId => {
             const route = this.routesData[routeId];
-            this.createMovingMarker(routeId, route.vehicle);
-        });
-    };
+            const speedKmh = route.speed;
+            const distance = this.calculateRouteDistance(routeCoords);
+            const duration = (distance / speedKmh) * 3600000 / this.simulationSpeed;
 
-    ikeaSimulation.updateMovingMarkers = function() {
-        Object.keys(this.routesData).forEach(routeId => {
-            const route = this.routesData[routeId];
+            console.log('Route distance:', distance, 'km, duration:', duration, 'ms');
+
+            const iconHtml = this.getVehicleIcon(vehicleType);
+            console.log('Vehicle icon HTML:', iconHtml);
+
+            try {
+                const marker = L.Marker.movingMarker(routeCoords, [duration], {
+                    icon: L.divIcon({
+                        html: iconHtml,
+                        className: 'vehicle-icon',
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    }),
+                    autostart: false
+                }).addTo(map);
+
+                console.log('Moving marker created successfully for', routeId);
+
+                this.movingMarkers[routeId] = {
+                    marker: marker,
+                    routeId: routeId,
+                    vehicleType: vehicleType,
+                    duration: duration,
+                    distance: distance,
+                    isMoving: false,
+                    lastStartTime: 0
+                };
+
+                return marker;
+            } catch (error) {
+                console.error('Error creating moving marker:', error);
+                return null;
+            }
+        };
+
+        this.getVehicleIcon = function(vehicleType) {
+            const icons = {
+                truck: '<div style="color: blue; font-size: 20px;">🚛</div>',
+                rail: '<div style="color: green; font-size: 20px;">🚂</div>',
+                air: '<div style="color: red; font-size: 20px;">✈️</div>',
+                multimodal: '<div style="color: purple; font-size: 20px;">🚛</div>'
+            };
+            return icons[vehicleType] || icons.truck;
+        };
+
+        this.calculateRouteDistance = function(coords) {
+            let totalDistance = 0;
+            for (let i = 1; i < coords.length; i++) {
+                totalDistance += this.calculateDistance(
+                    coords[i-1][0], coords[i-1][1],
+                    coords[i][0], coords[i][1]
+                );
+            }
+            return totalDistance;
+        };
+
+        this.startVehicleMovement = function(routeId) {
+            console.log('Starting vehicle movement for', routeId);
             const vehicle = this.movingMarkers[routeId];
-
             if (vehicle && !vehicle.isMoving) {
-                const startChance = (1 / route.frequency) * (this.simulationTime / 3600);
-                if (Math.random() < startChance * 0.05) {
-                    this.startVehicleMovement(routeId);
-                }
+                vehicle.marker.start();
+                vehicle.isMoving = true;
+                vehicle.lastStartTime = Date.now();
+
+                setTimeout(() => {
+                    this.onVehicleArrival(routeId);
+                }, vehicle.duration);
             }
-        });
-    };
+        };
 
-    // Initialize moving markers after a delay
-    setTimeout(function() {
-        initMovingMarkers();
-    }, 500);
-    } else {
-        // Retry after a short delay
-        setTimeout(initMovingMarkers, 100);
-    }
-    }
+        this.onVehicleArrival = function(routeId) {
+            console.log('Vehicle arrived at destination for', routeId);
+            const vehicle = this.movingMarkers[routeId];
+            if (vehicle) {
+                vehicle.isMoving = false;
+                setTimeout(() => {
+                    if (this.movingMarkers[routeId]) {
+                        this.resetVehiclePosition(routeId);
+                    }
+                }, 3000);
+            }
+        };
 
-    initMovingMarkers();
-    </script>
+        this.resetVehiclePosition = function(routeId) {
+            const vehicle = this.movingMarkers[routeId];
+            if (vehicle) {
+                vehicle.marker.stop();
+                const routeCoords = this.routeCoordinates[routeId];
+                if (routeCoords && routeCoords.length > 0) {
+                    vehicle.marker.setLatLng(routeCoords[0]);
+                }
+                vehicle.isMoving = false;
+            }
+        };
+
+        this.initializeMovingMarkers = function() {
+            console.log('Initializing moving markers...');
+            Object.keys(this.routesData).forEach(routeId => {
+                const route = this.routesData[routeId];
+                this.createMovingMarker(routeId, route.vehicle);
+            });
+
+            // Force start a test vehicle immediately
+            setTimeout(() => {
+                console.log('Starting test vehicle...');
+                this.startVehicleMovement('china_poland'); // Start China->Poland train
+            }, 2000);
+        };
+
+        this.updateMovingMarkers = function() {
+            Object.keys(this.routesData).forEach(routeId => {
+                const route = this.routesData[routeId];
+                const vehicle = this.movingMarkers[routeId];
+
+                if (vehicle && !vehicle.isMoving) {
+                    const startChance = (1 / route.frequency) * (this.simulationTime / 3600);
+                    if (Math.random() < startChance * 0.5) {
+                        this.startVehicleMovement(routeId);
+                    }
+                }
+            });
+        };
     """
 
-    m.get_root().html.add_child(folium.Element(moving_marker_functions))
+    # Insert the moving marker code into the init function
+    simulation_js = simulation_js.replace(
+        "        init: function() {{\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},",
+        f"        init: function() {{\n            {moving_marker_code}\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},"
+    )
+
+    # Add the JavaScript to the map
+    m.get_root().script.add_child(folium.Element(simulation_js))
 
     # Add custom CSS
     custom_css = """
