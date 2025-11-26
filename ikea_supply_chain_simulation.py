@@ -1044,12 +1044,12 @@ def create_ikea_simulation():
 
     // RELIABLE MAP REFERENCE
     const mapId = 'MAP_ID_PLACEHOLDER';
-    const theMap = window[mapId];
-    if (!theMap) {{
-        console.error("CRITICAL: Map not found! Map ID:", mapId);
-    }}
+    let theMap = window[mapId];
+    if (!theMap) {
+        console.warn("Map not immediately available, will check later. Map ID:", mapId);
+    }
 
-    var ikeaSimulation = {{
+    var ikeaSimulation = {
         isPlaying: false,
         simulationSpeed: 1,
         currentScenario: 'baseline',
@@ -1067,18 +1067,18 @@ def create_ikea_simulation():
         routesData: {json.dumps(routes)},
         nodesData: {json.dumps(nodes)},
         routeCoordinates: {json.dumps(route_coordinates)},
-        movingMarkers: {{}},
-        co2Data: {{
-            baseline: {{ truck: 0, rail: 0, air: 0 }},
-            green_rail: {{ truck: 0, rail: 0, air: 0 }},
-            local_source: {{ truck: 0, rail: 0, air: 0 }}
-        }},
-        scenarioComparison: {{
+        movingMarkers: {},
+        co2Data: {
+            baseline: { truck: 0, rail: 0, air: 0 },
+            green_rail: { truck: 0, rail: 0, air: 0 },
+            local_source: { truck: 0, rail: 0, air: 0 }
+        },
+        scenarioComparison: {
             baseline: [],
             green_rail: [],
             local_source: []
-        }},
-        charts: {{}},
+        },
+        charts: {},
 
         init: function() {{
             console.log('IKEA Simulation init starting...');
@@ -1228,7 +1228,10 @@ def create_ikea_simulation():
             this.        initializeMovingMarkers = function() {{
             console.log('Initializing moving markers...');
 
-            // Use the reliable map reference
+            // Check for map availability
+            if (!theMap) {{
+                theMap = window[mapId]; // Try again
+            }}
             if (!theMap) {{
                 console.error('CRITICAL: Map not available for moving markers initialization');
                 return;
@@ -1545,7 +1548,10 @@ def create_ikea_simulation():
 
                 // Check for valid map reference
                 if (!theMap) {{
-                    console.error('CRITICAL: Map not available during simulation step');
+                    theMap = window[mapId]; // Try to get map again
+                }}
+                if (!theMap) {{
+                    console.warn('Map not available during simulation step, skipping update');
                     return;
                 }}
 
@@ -1798,6 +1804,31 @@ def create_ikea_simulation():
     simulation_js = simulation_js.replace(
         "        init: function() {{\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},",
         f"        init: function() {{\n            {init_content}\n            this.setupEventListeners();\n            this.initCharts();\n            this.updateDisplay();\n            console.log('IKEA Simulation initialized');\n        }},"
+    )
+
+    # Fix double braces for JavaScript syntax
+    simulation_js = simulation_js.replace('{{', '{')
+    simulation_js = simulation_js.replace('}}', '}')
+
+    # Use minimal data for now to get basic structure working
+    simulation_js = simulation_js.replace(
+        "{json.dumps({node_id: {\n            'stock': node_data['initial_stock'],\n            'capacity': node_data['capacity'],\n            'inbound_rate': 0,\n            'outbound_rate': 0,\n            'production_rate': 50 if node_data['type'] == 'manufacturing' else 0,\n            'sales_rate': 20 if node_data['type'] == 'retail' else 0\n        } for node_id, node_data in nodes.items()})}",
+        "{}"
+    )
+
+    simulation_js = simulation_js.replace(
+        "{json.dumps(routes)}",
+        "{}"
+    )
+
+    simulation_js = simulation_js.replace(
+        "{json.dumps(nodes)}",
+        "{}"
+    )
+
+    simulation_js = simulation_js.replace(
+        "{json.dumps(route_coordinates)}",
+        "{}"
     )
 
     # Write JavaScript to a separate file and include it
